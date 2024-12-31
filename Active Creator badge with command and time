@@ -1,15 +1,19 @@
 import discord
-from discord.ext import commands
-from datetime import datetime
+from discord.ext import commands, tasks
+from datetime import datetime, timedelta
+import time
 
-TOKEN = 'put your token in here'
+# Replace with your actual token
+TOKEN = 'put your token here'
 
 intents = discord.Intents.default()
 intents.message_content = True
 
-bot = commands.Bot(command_prefix='?', description=description, intents=intents)
+bot = commands.Bot(command_prefix='?', description="Python Discord Bot", intents=intents)
 
-#active dev badge command
+# Global variable to track the command start time
+start_time = None
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name} ({bot.user.id})')
@@ -17,8 +21,21 @@ async def on_ready():
 
 @bot.tree.command(name="activedevbadge", description="Show when you activated your badge eligibility!")
 async def active_dev_badge(interaction: discord.Interaction):
-    command_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    global start_time
 
+    # Record the start time when the command is issued
+    if start_time is None:
+        start_time = time.time()
+
+    # Format the command entry time
+    command_time = datetime.fromtimestamp(start_time).strftime("%Y-%m-%d %H:%M:%S")
+
+    # Calculate elapsed time
+    elapsed_time = time.time() - start_time
+    hours, remainder = divmod(int(elapsed_time), 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    # Create the embed
     embed = discord.Embed(
         title="Badge Activation Details",
         color=discord.Color.orange()
@@ -26,6 +43,11 @@ async def active_dev_badge(interaction: discord.Interaction):
     embed.add_field(
         name="When You Entered the Command",
         value=f"You entered this command on **{command_time}**.",
+        inline=False
+    )
+    embed.add_field(
+        name="Elapsed Time",
+        value=f"**{hours:02}:{minutes:02}:{seconds:02}**",
         inline=False
     )
     embed.add_field(
@@ -38,11 +60,68 @@ async def active_dev_badge(interaction: discord.Interaction):
     )
     embed.add_field(
         name="Extra Note",
-        value="If you need to check the time again, just type the command again!",
+        value="If the timer stops, just type the command again to resume it!",
         inline=False
     )
-    embed.set_thumbnail(url="https://cdn.discordapp.com/embed/avatars/0.png")
+    embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/719274110718574622/1323750888350679110/logofinal.png?ex=6775a695&is=67745515&hm=176185036af254e3badb7e6af7b50d1472050e567f3ef73fd6a6e23dba2fe7ef&")
 
+    # Send the embed message
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
+    # Start the live timer update
+    message = await interaction.original_response()
+    update_timer_embed.start(message)
+
+@tasks.loop(seconds=1)
+async def update_timer_embed(message: discord.Message):
+    """Updates the timer in the embed every second."""
+    global start_time
+    if start_time is not None:
+        # Calculate elapsed time
+        elapsed_time = time.time() - start_time
+        hours, remainder = divmod(int(elapsed_time), 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        # Format the start time
+        command_time = datetime.fromtimestamp(start_time).strftime("%Y-%m-%d %H:%M:%S")
+
+        # Update the embed
+        embed = discord.Embed(
+            title="Badge Activation Details",
+            color=discord.Color.orange()
+        )
+        embed.add_field(
+            name="When You Entered the Command",
+            value=f"You entered this command on **{command_time}**.",
+            inline=False
+        )
+        embed.add_field(
+            name="Elapsed Time",
+            value=f"**{hours:02}:{minutes:02}:{seconds:02}**",
+            inline=False
+        )
+        embed.add_field(
+            name="Note",
+            value=(
+                "After approximately 24 hours, you should be eligible to claim the Active Dev Badge.\n"
+                "For more information, visit [Active Developer Badge](https://discord.com/developers/active-developer)."
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="Extra Note",
+            value="If the timer stops, just type the command again to resume it!",
+            inline=False
+        )
+        embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/719274110718574622/1323750888350679110/logofinal.png?ex=6775a695&is=67745515&hm=176185036af254e3badb7e6af7b50d1472050e567f3ef73fd6a6e23dba2fe7ef&")
+
+        # Edit the original message with the updated embed
+        await message.edit(embed=embed)
+
+@bot.event
+async def on_disconnect():
+    """Stops the timer update loop if the bot disconnects."""
+    update_timer_embed.stop()
+
 bot.run(TOKEN)
+
